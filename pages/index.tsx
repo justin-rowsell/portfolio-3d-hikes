@@ -1,8 +1,14 @@
 import type { NextPage } from 'next'
 import Head from 'next/head'
 import Image from 'next/image'
-
+import React from 'react';
+import MapLoadingHolder from '../components/map-loading-holder';
+import MapboxMap from '../components/mapbox-map';
+ 
 const Home: NextPage = () => {
+  const [loading, setLoading] = React.useState(true);
+  const handleMapLoading = () => setLoading(false);
+  
   return (
     <div className="flex min-h-screen flex-col items-center justify-center py-2">
       <Head>
@@ -10,24 +16,26 @@ const Home: NextPage = () => {
         <link rel="icon" href="/LogoTransparent.png" />
       </Head>
 
-      <main className="flex w-full flex-1 flex-col items-center justify-center px-20 text-center">
-        <h1 className="text-6xl font-bold">
-          Welcome to{' '}
-          <a className="text-blue-600" href="https://nextjs.org">
-            Next.js!
-          </a>
-        </h1>
+      <main className="flex w-full flex-1 flex-col items-center justify-center">
+        <div className="app-container">
+          <div className="map-wrapper">
+            <MapboxMap
+              onMapLoaded={handleMapLoading}
+            />
+         </div>
+        {loading && <MapLoadingHolder />}
+        </div>
       </main>
-
-      <footer className="flex h-24 w-full items-center justify-left border-t">
+      <footer className="sticky bottom-4 z-50 bg-[#E9EBDB] text-[#302B38] 
+                        rounded-md shadow-lg w-9/12">
         <a
-          className="flex items-center justify-center gap-2"
+          className="flex items-center justify-center gap-2 p-1 align-middle"
           href="https://aquaberry.io"
           target="_blank"
           rel="noopener noreferrer"
         >
           Powered by{' '}
-          <Image src="/LogoTransparentName.png" alt="Aqauberry Logo" width={72} height={16} />
+          <Image src="/LogoTransparentName.png" alt="Aqauberry Logo" width={72} height={32} />
         </a>
       </footer>
     </div>
