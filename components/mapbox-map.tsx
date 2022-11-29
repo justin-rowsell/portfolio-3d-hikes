@@ -1,7 +1,6 @@
 import * as React from "react";
 import mapboxgl, { MapboxGeoJSONFeature } from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import * as turf from '@turf/turf'
 
 interface MapboxMapProps {
     initialOptions?: Omit<mapboxgl.MapboxOptions, "container">;
@@ -9,96 +8,94 @@ interface MapboxMapProps {
     onMapLoaded?(map: mapboxgl.Map): void;
 }
 
-function transformCameraRoute(pitch: number, bearing: number, targetPosition: number[], altitude: number, smooth: boolean=false) {
-    var bearingInRadian = bearing / 57.29;
-    var pitchInRadian = (90 - pitch) / 57.29;
-        
-    var lngDiff =
-      ((altitude / Math.tan(pitchInRadian)) *
-        Math.sin(-bearingInRadian)) /
-      70000; // ~70km/degree longitude
-    var latDiff =
-      ((altitude / Math.tan(pitchInRadian)) *
-        Math.cos(-bearingInRadian)) /
-      110000 // 110km/degree latitude
-    
-    var correctedLng = targetPosition[0] + lngDiff;
-    var correctedLat = targetPosition[1] - latDiff;
-    
-    return [ correctedLng, correctedLat ]
+function flattenCoords(coords: number[][][]): number[][] {
+    const finalCoords = [];
+    for (const stackedList of coords) {
+        finalCoords.push(stackedList[0]);
+        const length = stackedList.length; 
+        if (length > 1) {
+            let index = 1;
+            while (index < length - 1) {
+                finalCoords.push(stackedList[index]);
+                index++;
+            }
+        }
+    } 
+    return finalCoords;
 }
 
-function animateRoute(route: any, map: mapboxgl.Map | undefined) {
-    // const targetRoute = flattenCoords(route.geometry.coordinates);
-    const flattenedTargetRoute = turf.flatten(route.geometry);
-    console.log(flattenedTargetRoute);
-    const targetRouteCoords = flattenedTargetRoute.features[0].geometry.coordinates as any;
-
-    const animationDuration = 80000;
-    const cameraAltitude = 4000;
-
-    // get the overall distance of each route so we can interpolate along them
-    const routeDistance = turf.lineDistance(turf.lineString(targetRouteCoords));
-    // const cameraRoute = route.geometry.coordinates.map((coord: number[]) => {
-    //     return transformCameraRoute(70, 0, coord, 3000000, true);
-    // });
-    const cameraRoute = targetRouteCoords;
-    console.log(route.geometry.coordinates);
-    console.log(cameraRoute);
-
-    const cameraRouteDistance = turf.lineDistance(turf.lineString(cameraRoute));
- 
-    let start: number;
- 
-    function frame(time: number) {
-        if (!start) start = time;
-        // phase determines how far through the animation we are
-        const phase = (time - start) / animationDuration;
- 
-        // phase is normalized between 0 and 1
-        // when the animation is finished, reset start to loop the animation
-        // if (phase > 1) {
-        //     // wait 1.5 seconds before looping
-        //     setTimeout(() => {
-        //         start = 0.0;
-        //     }, 1500);
-        // }
-
-        // use the phase to get a point that is the appropriate distance along the route
-        // this approach syncs the camera and route positions ensuring they move
-        // at roughly equal rates even if they don't contain the same number of points
-        const alongRoute = turf.along(turf.lineString(targetRouteCoords), routeDistance * phase).geometry.coordinates;
-        
-        const alongCamera = turf.along(
-            turf.lineString(cameraRoute),
-            cameraRouteDistance * phase
-        ).geometry.coordinates;
-
-        if (map == undefined) return;
-        const camera = map.getFreeCameraOptions();
-        
-        // set the position and altitude of the camera
-        camera.position = mapboxgl.MercatorCoordinate.fromLngLat({
-            lng: alongCamera[0],
-            lat: alongCamera[1]
-        }, cameraAltitude);
-
-        // tell the camera to look at a point along the route
-        camera.lookAtPoint({
-            lng: alongRoute[0],
-            lat: alongRoute[1]
-        });
-
-        map.setFreeCameraOptions(camera);
-        window.requestAnimationFrame(frame);
+let graphic: number[][] | undefined = undefined;
+let id = -1;
+function flyToRoute(route: any, map: mapboxgl.Map | undefined) {
+    if (id != -1) {
+        window.clearInterval(id);
     }
-    window.requestAnimationFrame(frame);
+    if (map === undefined) return;
+    let targetRoute: number[][] = [];
+    if (route.geometry.type == 'MultiLineString')
+        targetRoute = flattenCoords(route.geometry.coordinates);
+    else
+        targetRoute = route.geometry.coordinates;
+    graphic = targetRoute;
+    map.flyTo({
+        center:[targetRoute[0][0], targetRoute[0][1]],
+        essential: true
+    });
+    id = window.setInterval(flashLine, 1000);
+    window.setTimeout(() => {
+        window.clearInterval(id);
+        id = -1;
+        clearLayer(map, routeLayerName);
+    }, 7000)
 }
 
 function getRouteTitle(route: any) {
     return route.properties.route_long;
 }
+let showLine = true;
+const routeLayerName = 'route'
+function flashLine() {
+    if (graphic == undefined || mapRef == undefined) return;
+    if (showLine) {
+        mapRef.addSource(routeLayerName, {
+            'type': 'geojson',
+            'data': {
+            'type': 'Feature',
+            'properties': {},
+            'geometry': {
+            'type': 'LineString',
+            'coordinates': graphic
+            }
+        }});
+        mapRef.addLayer({
+            'id': routeLayerName,
+            'type': 'line',
+            'source': 'route',
+            'layout': {
+                'line-join': 'round',
+                'line-cap': 'round'
+            },
+            'paint': {
+                'line-color': '#C61230',
+                'line-width': 8
+            }
+        });
+    }
+    else {
+        clearLayer(mapRef, routeLayerName);
+    }
+    showLine = !showLine;
+}
 
+function clearLayer(map: mapboxgl.Map, layerName: string) {
+    try {
+        map.removeLayer(layerName);
+        map.removeSource(layerName);
+    } catch {}
+   
+}
+
+let mapRef: mapboxgl.Map | undefined = undefined;
 function MapboxMap({ initialOptions = {}, onMapCreated, onMapLoaded }: MapboxMapProps) {
     const [map, setMap] = React.useState<mapboxgl.Map>();
     const [routes, setRoutes] = React.useState<MapboxGeoJSONFeature[]>([]);
@@ -116,11 +113,12 @@ function MapboxMap({ initialOptions = {}, onMapCreated, onMapLoaded }: MapboxMap
             center: [-74.0066, 40.7135],
             zoom: 15.5,
             pitch: 65,
-            bearing: -180,
+            bearing: 0,
           ...initialOptions,
         });
 
         setMap(mapboxMap);
+        mapRef = mapboxMap;
         if (onMapCreated) onMapCreated(mapboxMap);
     
         if (onMapLoaded) mapboxMap.once("load", onMapLoaded);
@@ -173,7 +171,6 @@ function MapboxMap({ initialOptions = {}, onMapCreated, onMapLoaded }: MapboxMap
                     'fill-extrusion-opacity': 0.6
                 }
             }, labelLayerId);
-
             mapboxMap.addSource('bus-routes', {
                 type: 'vector',
                 url: 'mapbox://aquaberry-dev.dvgwbvi6'
@@ -185,7 +182,34 @@ function MapboxMap({ initialOptions = {}, onMapCreated, onMapLoaded }: MapboxMap
                 "source-layer": 'bus_routes_nyc_may2020-6pebav',
                 paint: {
                     'line-color': '#BD2B3A',
-                    'line-width': 1
+                    'line-width': 1,
+                    'line-opacity': 0
+                }
+            });
+            
+            mapboxMap.addSource('traffic', {
+                type: 'vector',
+                url: 'mapbox://mapbox.mapbox-traffic-v1'
+            });
+            mapboxMap.addLayer({
+                id: 'traffic',
+                type: 'line',
+                source: 'traffic',
+                "source-layer": 'traffic',
+                paint: {
+                    "line-width": 3,
+                    "line-color": [
+                    "case",
+                    [ "==", "low", [ "get", "congestion" ]], 
+                    "#aab7ef", 
+                    [ "==", "moderate", [ "get", "congestion" ]],
+                    "#4264fb",
+                    [ "==", "heavy", [ "get", "congestion" ]],
+                    "#ee4e8b",
+                    [ "==", "severe", [ "get", "congestion" ]],
+                    "#b43b71",
+                    "#000000"
+                    ]
                 }
             });
             
@@ -195,7 +219,15 @@ function MapboxMap({ initialOptions = {}, onMapCreated, onMapLoaded }: MapboxMap
                     const features = mapboxMap.querySourceFeatures('bus-routes',  {
                         sourceLayer: 'bus_routes_nyc_may2020-6pebav'
                     });
-                    setRoutes(features);
+                    const addedRoutes: Array<string> = [];
+                    const noDuplicates = features.filter(f => {
+                        const title = getRouteTitle(f);
+                        if (addedRoutes.includes(title)) return false;
+                        
+                        addedRoutes.push(title);
+                        return true;
+                    });
+                    setRoutes(noDuplicates);
                 }
             });
         });
@@ -208,13 +240,13 @@ function MapboxMap({ initialOptions = {}, onMapCreated, onMapLoaded }: MapboxMap
         bg-[#E9EBDB] text-[#302B38] opactiy-20">
             <thead className="text-left flex w-full">
                 <tr className="flex w-full mb-4">
-                    <th className="p-4">Animate Routes:</th>
+                    <th className="p-4">Highlight Routes:</th>
                 </tr>
             </thead>
             <tbody className="flex flex-col items-center justify-between overflow-y-scroll w-full"
             style={{height: "50vh"}}>
                 {routes.map(function(route, i){
-                    return <tr key={i} className="hover:bg-[#fdffed]" onClick={() => animateRoute(route, map)}>
+                    return <tr key={i} className="hover:bg-[#fdffed] hover:cursor-pointer" onClick={() => flyToRoute(route, map)}>
                                 <td>{getRouteTitle(route)}</td>
                             </tr>
                 })}
