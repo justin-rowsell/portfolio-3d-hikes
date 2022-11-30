@@ -9,7 +9,7 @@ interface MapboxMapProps {
 }
 
 function flattenCoords(coords: number[][][]): number[][] {
-    const finalCoords = [];
+    const finalCoords: number[][] = [];
     for (const stackedList of coords) {
         finalCoords.push(stackedList[0]);
         const length = stackedList.length; 

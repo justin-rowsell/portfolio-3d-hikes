@@ -4,9 +4,12 @@ import Image from 'next/image'
 import React from 'react';
 import MapLoadingHolder from '../components/map-loading-holder';
 import MapboxMap from '../components/mapbox-map';
+import Modal from '../components/modal';
  
 const Home: NextPage = () => {
   const [loading, setLoading] = React.useState(true);
+  let [showModal, setShowModal] = React.useState(false)
+
   const handleMapLoading = () => setLoading(false);
   
   function goToSubscriptions() {
@@ -40,14 +43,21 @@ const Home: NextPage = () => {
         >
           Powered by{' '}<Image src="/LogoTransparentName.png" alt="Aqauberry Logo" width={72} height={32} />
         </a>
-        <button className="flex-initial bg-[#C61230] text-white m-2 p-2 rounded w-28">
+        <button className="flex-initial bg-[#C61230] text-white m-2 p-2 rounded w-28"
+        onClick={() => setShowModal(true)}>
           About
         </button>
         <button className="flex-initial bg-[#C61230] text-white m-2 p-2 rounded w-28"
         onClick={() => goToSubscriptions()}>
           Learn More
         </button>
+        <Modal
+                onClose={() => setShowModal(false)}
+                show={showModal}
+            >
+            </Modal>
       </footer>
+      
     </div>
   )
 }

@@ -6,6 +6,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@headlessui/react": "^1.7.4",
     "@turf/turf": "^6.5.0",
     "mapbox-gl": "^2.11.0",
     "next": "latest",
